@@ -6,14 +6,15 @@ export const maxDuration = 60;
 // Kostenloses Gemini-Modell (Google AI Studio Free Tier).
 const GEMINI_MODEL = "gemini-2.5-flash";
 
-const SYSTEM_PROMPT = `Du bekommst den Inhalt eines Dokuments (Vorlesungsskript, Notizen, Text, o.ä.) und
-sollst daraus Multiple-Choice-Quizfragen für eine Lern-App extrahieren bzw. erstellen.
+const SYSTEM_PROMPT = `Du bekommst den Inhalt von einem oder mehreren Dokumenten (Vorlesungsskripte,
+Notizen, Text, o.ä.) und sollst daraus gemeinsam Multiple-Choice-Quizfragen für eine Lern-App
+extrahieren bzw. erstellen.
 
 Regeln:
-- Wenn das Dokument bereits fertige Prüfungsfragen mit Antwortoptionen enthält, übernimm sie
+- Wenn die Dokumente bereits fertige Prüfungsfragen mit Antwortoptionen enthalten, übernimm sie
   möglichst originalgetreu (Frage, Antwortmöglichkeiten, richtige Antwort).
-- Wenn das Dokument nur Fließtext/Notizen ohne fertige Fragen enthält, erstelle selbst sinnvolle
-  Verständnisfragen zu den wichtigsten Inhalten (mindestens 5, höchstens 60 Fragen).
+- Wenn die Dokumente nur Fließtext/Notizen ohne fertige Fragen enthalten, erstelle selbst sinnvolle
+  Verständnisfragen zu den wichtigsten Inhalten (mindestens 5, höchstens 80 Fragen).
 - Jede Frage braucht 2 bis 6 Antwortoptionen, davon ist mindestens eine korrekt (auch mehrere
   richtige Antworten sind erlaubt, wenn das inhaltlich passt).
 - Formuliere Fragen und Antworten auf Deutsch, prägnant und eindeutig.
@@ -70,21 +71,30 @@ export async function POST(req: NextRequest) {
 
     const formData = await req.formData();
     const text = formData.get("text");
-    const file = formData.get("file");
+    // Abwärtskompatibel: "files" (mehrere) bevorzugt, "file" (einzeln) als Fallback.
+    const files = [...formData.getAll("files"), formData.get("file")].filter(
+      (f): f is File => f instanceof File
+    );
 
-    if (!text && !file) {
+    if (!text && files.length === 0) {
       return NextResponse.json(
-        { error: "Bitte Text einfügen oder eine PDF-Datei hochladen." },
+        { error: "Bitte Text einfügen oder mindestens eine PDF-Datei hochladen." },
+        { status: 400 }
+      );
+    }
+    if (files.length > 5) {
+      return NextResponse.json(
+        { error: "Bitte maximal 5 Dateien gleichzeitig hochladen." },
         { status: 400 }
       );
     }
 
     const parts: Record<string, unknown>[] = [];
 
-    if (file instanceof File) {
+    for (const file of files) {
       if (file.type !== "application/pdf") {
         return NextResponse.json(
-          { error: "Nur PDF-Dateien werden für den Datei-Upload unterstützt." },
+          { error: `"${file.name}" ist keine PDF-Datei. Nur PDFs werden unterstützt.` },
           { status: 400 }
         );
       }
@@ -102,7 +112,7 @@ export async function POST(req: NextRequest) {
     }
 
     parts.push({
-      text: "Extrahiere bzw. erstelle jetzt die Quizfragen aus dem obigen Inhalt als JSON gemäß Schema.",
+      text: "Extrahiere bzw. erstelle jetzt die Quizfragen aus dem/den obigen Dokument(en) als JSON gemäß Schema.",
     });
 
     const geminiRes = await fetch(
