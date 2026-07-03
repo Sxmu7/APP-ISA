@@ -2,12 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Profile, SubjectId, LearnMode, Question, View } from "@/lib/types";
-import {
-  loadCurrentProfile,
-  createOrLoadProfile,
-  logout,
-  listProfileNames,
-} from "@/lib/storage";
+import { loadCurrentProfile, hydrateProfile, logout } from "@/lib/storage";
+import { apiMe, apiFetchProfile, apiRegister, apiLogin, apiLogout } from "@/lib/apiClient";
 import { allQuestions, questionsBySubject, shuffle, getQuestionById } from "@/lib/questions";
 import { subjects } from "@/lib/subjects";
 import Login from "./Login";
@@ -41,23 +37,45 @@ export default function AppShell() {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionCounter, setSessionCounter] = useState(0);
   const [ready, setReady] = useState(false);
+  const [pendingLocalProfile, setPendingLocalProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
-    const existing = loadCurrentProfile();
-    if (existing) {
-      setProfile(existing);
-      setView("dashboard");
-    }
-    setReady(true);
+    (async () => {
+      const username = await apiMe();
+      if (username) {
+        const serverProfile = await apiFetchProfile();
+        if (serverProfile) {
+          hydrateProfile(serverProfile);
+          setProfile(serverProfile);
+          setView("dashboard");
+          setReady(true);
+          return;
+        }
+      }
+      // Kein gültiger Server-Login: evtl. vorhandenen lokalen Fortschritt für
+      // eine spätere Registrierung vormerken (Migration in den Account).
+      const local = loadCurrentProfile();
+      if (local) setPendingLocalProfile(local);
+      setReady(true);
+    })();
   }, []);
 
-  function handleLogin(name: string) {
-    const p = createOrLoadProfile(name);
+  async function handleRegister(username: string, password: string) {
+    const p = await apiRegister(username, password, pendingLocalProfile ?? undefined);
+    hydrateProfile(p);
     setProfile(p);
     setView("dashboard");
   }
 
-  function handleLogout() {
+  async function handleLoginSubmit(username: string, password: string) {
+    const p = await apiLogin(username, password);
+    hydrateProfile(p);
+    setProfile(p);
+    setView("dashboard");
+  }
+
+  async function handleLogout() {
+    await apiLogout();
     logout();
     setProfile(null);
     setSession(null);
@@ -135,7 +153,13 @@ export default function AppShell() {
   if (!ready) return null;
 
   if (!profile || view === "login") {
-    return <Login existingNames={listProfileNames()} onLogin={handleLogin} />;
+    return (
+      <Login
+        hasLocalProgress={!!pendingLocalProfile}
+        onRegister={handleRegister}
+        onLogin={handleLoginSubmit}
+      />
+    );
   }
 
   return (

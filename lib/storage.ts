@@ -1,4 +1,5 @@
 import { Profile, AttemptRecord, ExamEvent, CardProgress, SubjectId, MistakeEntry } from "./types";
+import { apiSyncProfile } from "./apiClient";
 
 const PROFILES_KEY = "studyflow_profiles_v1";
 const CURRENT_KEY = "studyflow_current_profile_v1";
@@ -119,6 +120,18 @@ export function saveProfile(profile: Profile) {
   profile.updatedAt = new Date().toISOString();
   all[profile.name] = profile;
   writeAll(all);
+  // Hintergrund-Sync zum Server (Multi-Device). Läuft ins Leere, falls
+  // gerade nicht eingeloggt oder offline – lokales Backup bleibt bestehen.
+  apiSyncProfile(profile);
+}
+
+// Übernimmt ein vom Server geladenes Profil (z.B. nach Login) in den
+// lokalen Cache und markiert es als aktives Profil.
+export function hydrateProfile(profile: Profile) {
+  const all = readAll();
+  all[profile.name] = profile;
+  writeAll(all);
+  setCurrentProfileName(profile.name);
 }
 
 export function deleteProfile(name: string) {
