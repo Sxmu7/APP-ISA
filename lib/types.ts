@@ -79,6 +79,7 @@ export interface Profile {
   cardProgress: Record<string, CardProgress>;
   examEvents: ExamEvent[];
   customSubjects: CustomSubject[]; // eigene, selbst hochgeladene Lernfächer
+  hiddenSubjects: string[]; // IDs ausgeblendeter Standardfächer (soziologie/psychologie)
   xp: number;
   streakDays: number;
   lastActiveDate: string; // ISO date

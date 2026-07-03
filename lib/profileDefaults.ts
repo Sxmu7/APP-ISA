@@ -14,6 +14,7 @@ export function createEmptyProfile(name: string): Profile {
     cardProgress: {},
     examEvents: [],
     customSubjects: [],
+    hiddenSubjects: [],
     xp: 0,
     streakDays: 0,
     lastActiveDate: now.slice(0, 10),
@@ -34,5 +35,7 @@ export function normalizeProfile(raw: Partial<Profile>, name: string): Profile {
     cardProgress: raw.cardProgress || empty.cardProgress,
     examEvents: raw.examEvents || empty.examEvents,
     attempts: raw.attempts || empty.attempts,
+    customSubjects: raw.customSubjects || empty.customSubjects,
+    hiddenSubjects: raw.hiddenSubjects || empty.hiddenSubjects,
   };
 }

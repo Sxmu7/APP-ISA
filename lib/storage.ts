@@ -71,6 +71,7 @@ function freshProfile(name: string): Profile {
     cardProgress: {},
     examEvents: [],
     customSubjects: [],
+    hiddenSubjects: [],
     xp: 0,
     streakDays: 0,
     lastActiveDate: todayISO(),
@@ -93,6 +94,7 @@ export function createOrLoadProfile(name: string): Profile {
     if (!profile.cardProgress) profile.cardProgress = {};
     if (!profile.examEvents) profile.examEvents = [];
     if (!profile.customSubjects) profile.customSubjects = [];
+    if (!profile.hiddenSubjects) profile.hiddenSubjects = [];
   }
   setCurrentProfileName(clean);
   return updateStreak(profile);
@@ -154,6 +156,7 @@ export function loadCurrentProfile(): Profile | null {
   if (!profile.cardProgress) profile.cardProgress = {};
   if (!profile.examEvents) profile.examEvents = [];
   if (!profile.customSubjects) profile.customSubjects = [];
+  if (!profile.hiddenSubjects) profile.hiddenSubjects = [];
   return updateStreak(profile);
 }
 
@@ -199,6 +202,21 @@ export function findCustomQuestionById(profile: Profile, questionId: string) {
     if (q) return q;
   }
   return undefined;
+}
+
+// ---- Standardfächer aus-/einblenden ----
+// Die Fragen der Standardfächer bleiben Teil der App (fest im Code), aber jeder
+// Account kann sie für sich ausblenden, um die App als reine "eigene Fächer"-
+// App zu nutzen. Ein Ausblenden löscht keine Daten und ist jederzeit umkehrbar.
+export function hideBuiltInSubject(profile: Profile, id: string) {
+  if (!profile.hiddenSubjects) profile.hiddenSubjects = [];
+  if (!profile.hiddenSubjects.includes(id)) profile.hiddenSubjects.push(id);
+  saveProfile(profile);
+}
+
+export function restoreBuiltInSubject(profile: Profile, id: string) {
+  profile.hiddenSubjects = (profile.hiddenSubjects || []).filter((s) => s !== id);
+  saveProfile(profile);
 }
 
 // ---- Fehlerhistorie (wie oft eine Frage insgesamt falsch beantwortet wurde) ----
