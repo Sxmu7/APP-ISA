@@ -15,9 +15,10 @@ export interface Question {
   topic: string;
   question: string;
   options: string[];
-  correctIndex: number;
-  explanation: string;
-  difficulty: Difficulty;
+  /** Indizes der richtigen Antwort(en). Länge 1 = Single-Choice, Länge >1 = Multiple-Choice. */
+  correctIndices: number[];
+  explanation?: string;
+  difficulty?: Difficulty;
 }
 
 export type LearnMode = "uebung" | "klausur" | "karteikarten" | "wiederholung" | "mix";

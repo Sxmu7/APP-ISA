@@ -5,8 +5,6 @@ import {
   LayoutDashboard,
   CalendarDays,
   BarChart3,
-  Sun,
-  Moon,
   LogOut,
   Flame,
   Trophy,
@@ -17,17 +15,13 @@ export default function Navbar({
   profile,
   view,
   onNavigate,
-  onToggleTheme,
   onLogout,
 }: {
   profile: Profile;
   view: View;
   onNavigate: (v: View) => void;
-  onToggleTheme: () => void;
   onLogout: () => void;
 }) {
-  const isDark = profile.theme === "dark";
-
   const navItems: { key: View; label: string; icon: React.ReactNode }[] = [
     { key: "dashboard", label: "Übersicht", icon: <LayoutDashboard className="h-4 w-4" /> },
     { key: "calendar", label: "Kalender", icon: <CalendarDays className="h-4 w-4" /> },
@@ -35,7 +29,10 @@ export default function Navbar({
   ];
 
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/80">
+    <header
+      className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/80"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+    >
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
         <button
           onClick={() => onNavigate("dashboard")}
@@ -75,9 +72,6 @@ export default function Navbar({
               {profile.xp} XP
             </span>
           </div>
-          <button onClick={onToggleTheme} className="btn-ghost !px-2.5">
-            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </button>
           <button onClick={onLogout} className="btn-ghost !px-2.5" title="Profil wechseln">
             <LogOut className="h-4 w-4" />
           </button>

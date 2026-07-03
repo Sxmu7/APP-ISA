@@ -120,11 +120,13 @@ export default function Flashcards({
           </div>
           <div className="flip-card-back card flex h-full flex-col items-center justify-center bg-indigo-50 p-6 text-center dark:bg-indigo-500/10">
             <p className="text-base font-semibold text-indigo-700 dark:text-indigo-300">
-              {current.options[current.correctIndex]}
+              {current.correctIndices.map((i) => current.options[i]).join(" · ")}
             </p>
-            <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
-              {current.explanation}
-            </p>
+            {current.explanation && (
+              <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+                {current.explanation}
+              </p>
+            )}
           </div>
         </div>
       </div>

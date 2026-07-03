@@ -7,7 +7,6 @@ import {
   createOrLoadProfile,
   logout,
   listProfileNames,
-  saveProfile,
 } from "@/lib/storage";
 import { allQuestions, questionsBySubject, shuffle, getQuestionById } from "@/lib/questions";
 import { subjects } from "@/lib/subjects";
@@ -48,21 +47,14 @@ export default function AppShell() {
     if (existing) {
       setProfile(existing);
       setView("dashboard");
-      applyTheme(existing.theme);
     }
     setReady(true);
   }, []);
-
-  function applyTheme(theme: "light" | "dark") {
-    if (typeof document === "undefined") return;
-    document.documentElement.classList.toggle("dark", theme === "dark");
-  }
 
   function handleLogin(name: string) {
     const p = createOrLoadProfile(name);
     setProfile(p);
     setView("dashboard");
-    applyTheme(p.theme);
   }
 
   function handleLogout() {
@@ -74,15 +66,6 @@ export default function AppShell() {
 
   function handleProfileChange(p: Profile) {
     setProfile(p);
-  }
-
-  function toggleTheme() {
-    if (!profile) return;
-    const next = profile.theme === "dark" ? "light" : "dark";
-    const updated = { ...profile, theme: next as "light" | "dark" };
-    saveProfile(updated);
-    setProfile(updated);
-    applyTheme(next);
   }
 
   function buildTitle(subject: SubjectId | "mix", mode: LearnMode) {
@@ -161,7 +144,6 @@ export default function AppShell() {
           if (v === "dashboard") setSession(null);
           setView(v);
         }}
-        onToggleTheme={toggleTheme}
         onLogout={handleLogout}
       />
 

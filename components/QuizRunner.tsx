@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Question, Profile, LearnMode, SubjectId, AttemptRecord } from "@/lib/types";
 import { noteFromPercent } from "@/lib/subjects";
 import {
@@ -18,6 +18,7 @@ import {
   PartyPopper,
   AlertTriangle,
   RotateCcw,
+  ListChecks,
 } from "lucide-react";
 
 interface QuizRunnerProps {
@@ -44,6 +45,14 @@ function formatTime(sec: number) {
   return `${m}:${s}`;
 }
 
+function sameSet(a: number[] | undefined, b: number[]): boolean {
+  const arrA = a || [];
+  if (arrA.length !== b.length) return false;
+  const as = [...arrA].sort((x, y) => x - y).join(",");
+  const bs = [...b].sort((x, y) => x - y).join(",");
+  return as === bs;
+}
+
 export default function QuizRunner({
   title,
   questions,
@@ -56,8 +65,8 @@ export default function QuizRunner({
   onRetryWrong,
 }: QuizRunnerProps) {
   const [index, setIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
-  const [locked, setLocked] = useState(false);
+  const [answers, setAnswers] = useState<Record<string, number[]>>({});
+  const [lockedMap, setLockedMap] = useState<Record<string, boolean>>({});
   const [finished, setFinished] = useState(false);
   const [timeLeft, setTimeLeft] = useState(
     examStyle ? questions.length * SECONDS_PER_QUESTION : 0
@@ -67,6 +76,9 @@ export default function QuizRunner({
   const current = questions[index];
   const total = questions.length;
   const isLast = index === total - 1;
+  const isMulti = current ? current.correctIndices.length > 1 : false;
+  const currentSelection = current ? answers[current.id] || [] : [];
+  const isLocked = current ? !!lockedMap[current.id] : false;
 
   useEffect(() => {
     if (!examStyle || finished) return;
@@ -95,23 +107,53 @@ export default function QuizRunner({
     );
   }
 
+  function evaluateAndLock(qId: string, selection: number[], question: Question) {
+    const correct = sameSet(selection, question.correctIndices);
+    if (correct) {
+      removeFromWrongPool(profile, question.subject, question.id);
+    } else {
+      addToWrongPool(profile, question.subject, question.id);
+    }
+    setLockedMap((prev) => ({ ...prev, [qId]: true }));
+    onProfileChange({ ...profile });
+  }
+
   function selectOption(optIndex: number) {
-    if (locked && !examStyle) return;
     if (examStyle) {
-      setAnswers((prev) => ({ ...prev, [current.id]: optIndex }));
+      setAnswers((prev) => {
+        const existing = prev[current.id] || [];
+        if (isMulti) {
+          const next = existing.includes(optIndex)
+            ? existing.filter((i) => i !== optIndex)
+            : [...existing, optIndex];
+          return { ...prev, [current.id]: next };
+        }
+        return { ...prev, [current.id]: [optIndex] };
+      });
       return;
     }
-    if (answers[current.id] !== undefined) return;
-    setAnswers((prev) => ({ ...prev, [current.id]: optIndex }));
-    setLocked(true);
 
-    const correct = optIndex === current.correctIndex;
-    if (correct) {
-      removeFromWrongPool(profile, current.subject, current.id);
+    // Übungs-/Wiederholungs-/Mix-Modus
+    if (isLocked) return;
+
+    if (isMulti) {
+      setAnswers((prev) => {
+        const existing = prev[current.id] || [];
+        const next = existing.includes(optIndex)
+          ? existing.filter((i) => i !== optIndex)
+          : [...existing, optIndex];
+        return { ...prev, [current.id]: next };
+      });
     } else {
-      addToWrongPool(profile, current.subject, current.id);
+      const selection = [optIndex];
+      setAnswers((prev) => ({ ...prev, [current.id]: selection }));
+      evaluateAndLock(current.id, selection, current);
     }
-    onProfileChange({ ...profile });
+  }
+
+  function submitMultiAnswer() {
+    if (isLocked || currentSelection.length === 0) return;
+    evaluateAndLock(current.id, currentSelection, current);
   }
 
   function goNext() {
@@ -120,13 +162,11 @@ export default function QuizRunner({
       return;
     }
     setIndex((i) => i + 1);
-    setLocked(false);
   }
 
   function goPrev() {
     if (index === 0) return;
     setIndex((i) => i - 1);
-    setLocked(false);
   }
 
   function finishQuiz() {
@@ -135,7 +175,8 @@ export default function QuizRunner({
     const wrongIds: string[] = [];
     for (const q of questions) {
       const sel = answers[q.id];
-      if (sel === q.correctIndex) {
+      const ok = sameSet(sel, q.correctIndices);
+      if (ok) {
         correct += 1;
         if (examStyle) removeFromWrongPool(profile, q.subject, q.id);
       } else {
@@ -169,7 +210,7 @@ export default function QuizRunner({
     let correct = 0;
     const wrongQuestions: Question[] = [];
     for (const q of questions) {
-      if (answers[q.id] === q.correctIndex) correct += 1;
+      if (sameSet(answers[q.id], q.correctIndices)) correct += 1;
       else wrongQuestions.push(q);
     }
     const percent = total > 0 ? Math.round((correct / total) * 100) : 0;
@@ -223,8 +264,10 @@ export default function QuizRunner({
 
         <div className="mt-6 space-y-3">
           {questions.map((q) => {
-            const sel = answers[q.id];
-            const correctAns = sel === q.correctIndex;
+            const sel = answers[q.id] || [];
+            const correctAns = sameSet(sel, q.correctIndices);
+            const correctText = q.correctIndices.map((i) => q.options[i]).join(" · ");
+            const selText = sel.map((i) => q.options[i]).join(" · ");
             return (
               <div key={q.id} className="card p-4">
                 <div className="flex items-start gap-2">
@@ -236,12 +279,16 @@ export default function QuizRunner({
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{q.question}</p>
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Richtige Antwort: {q.options[q.correctIndex]}
+                      Richtige Antwort: {correctText}
                     </p>
-                    {sel !== undefined && sel !== q.correctIndex && (
-                      <p className="text-xs text-rose-500">Deine Antwort: {q.options[sel]}</p>
+                    {!correctAns && sel.length > 0 && (
+                      <p className="text-xs text-rose-500">Deine Antwort: {selText}</p>
                     )}
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{q.explanation}</p>
+                    {q.explanation && (
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        {q.explanation}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -252,8 +299,7 @@ export default function QuizRunner({
     );
   }
 
-  const selected = answers[current.id];
-  const showResultColors = !examStyle && selected !== undefined;
+  const showResultColors = !examStyle && isLocked;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -289,27 +335,41 @@ export default function QuizRunner({
       </div>
 
       <div className="card animate-fade-in p-6">
-        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-indigo-500">
-          {current.topic}
-        </p>
+        <div className="mb-1 flex items-center gap-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-indigo-500">
+            {current.topic}
+          </p>
+          {isMulti && (
+            <span className="flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
+              <ListChecks className="h-3 w-3" />
+              Mehrere Antworten möglich
+            </span>
+          )}
+        </div>
         <h2 className="text-lg font-semibold leading-snug">{current.question}</h2>
 
         <div className="mt-5 space-y-2">
           {current.options.map((opt, i) => {
+            const isSelected = currentSelection.includes(i);
+            const isCorrectOption = current.correctIndices.includes(i);
             let style =
               "border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-700 dark:hover:bg-slate-800";
-            if (examStyle && selected === i) {
+
+            if (examStyle && isSelected) {
               style = "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10";
             }
             if (showResultColors) {
-              if (i === current.correctIndex) {
+              if (isCorrectOption) {
                 style = "border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10";
-              } else if (i === selected) {
+              } else if (isSelected) {
                 style = "border-rose-500 bg-rose-50 dark:bg-rose-500/10";
               } else {
                 style = "border-slate-200 opacity-60 dark:border-slate-700";
               }
+            } else if (!examStyle && isSelected) {
+              style = "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10";
             }
+
             return (
               <button
                 key={i}
@@ -318,10 +378,10 @@ export default function QuizRunner({
                 className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition ${style}`}
               >
                 <span>{opt}</span>
-                {showResultColors && i === current.correctIndex && (
+                {showResultColors && isCorrectOption && (
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
                 )}
-                {showResultColors && i === selected && i !== current.correctIndex && (
+                {showResultColors && isSelected && !isCorrectOption && (
                   <XCircle className="h-4 w-4 shrink-0 text-rose-500" />
                 )}
               </button>
@@ -329,7 +389,17 @@ export default function QuizRunner({
           })}
         </div>
 
-        {showResultColors && (
+        {!examStyle && isMulti && !isLocked && (
+          <button
+            onClick={submitMultiAnswer}
+            disabled={currentSelection.length === 0}
+            className="btn-primary mt-4 w-full"
+          >
+            Antwort prüfen
+          </button>
+        )}
+
+        {showResultColors && current.explanation && (
           <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
             {current.explanation}
           </div>
@@ -349,11 +419,7 @@ export default function QuizRunner({
               <ArrowRight className="h-4 w-4" />
             </button>
           ) : (
-            <button
-              onClick={goNext}
-              disabled={selected === undefined}
-              className="btn-primary"
-            >
+            <button onClick={goNext} disabled={!isLocked} className="btn-primary">
               {isLast ? "Fertig" : "Weiter"}
               <ArrowRight className="h-4 w-4" />
             </button>
