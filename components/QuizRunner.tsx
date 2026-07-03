@@ -15,25 +15,26 @@ import {
   Clock,
   ArrowLeft,
   ArrowRight,
-  PartyPopper,
-  AlertTriangle,
   RotateCcw,
   ListChecks,
 } from "lucide-react";
+import ResultAnimation from "./ResultAnimation";
 
 interface QuizRunnerProps {
   title: string;
   questions: Question[];
   mode: LearnMode;
   subjectForRecord: SubjectId | "mix";
-  examStyle: boolean; // true = Klausursimulation (Timer, kein Sofort-Feedback, 50%-Grenze)
+  examStyle: boolean; // true = Klausursimulation (fester 60-Min-Timer, kein Sofort-Feedback, 50%-Grenze)
   profile: Profile;
   onProfileChange: (p: Profile) => void;
   onExit: () => void;
   onRetryWrong?: (questions: Question[]) => void;
 }
 
-const SECONDS_PER_QUESTION = 40;
+// Klausursimulation: immer 30 Fragen, immer 60 Minuten Gesamtzeit (kein Timer pro Frage).
+export const EXAM_QUESTION_COUNT = 30;
+const EXAM_TOTAL_SECONDS = 60 * 60;
 
 function formatTime(sec: number) {
   const m = Math.floor(sec / 60)
@@ -68,9 +69,7 @@ export default function QuizRunner({
   const [answers, setAnswers] = useState<Record<string, number[]>>({});
   const [lockedMap, setLockedMap] = useState<Record<string, boolean>>({});
   const [finished, setFinished] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(
-    examStyle ? questions.length * SECONDS_PER_QUESTION : 0
-  );
+  const [timeLeft, setTimeLeft] = useState(examStyle ? EXAM_TOTAL_SECONDS : 0);
   const finishedRef = useRef(false);
 
   const current = questions[index];
@@ -220,11 +219,7 @@ export default function QuizRunner({
       <div className="mx-auto max-w-2xl px-4 py-10">
         <div className="card animate-pop p-8 text-center">
           {examStyle ? (
-            passed ? (
-              <PartyPopper className="mx-auto h-10 w-10 text-emerald-500" />
-            ) : (
-              <AlertTriangle className="mx-auto h-10 w-10 text-rose-500" />
-            )
+            <ResultAnimation passed={passed} />
           ) : (
             <CheckCircle2 className="mx-auto h-10 w-10 text-indigo-500" />
           )}
@@ -314,7 +309,7 @@ export default function QuizRunner({
         {examStyle ? (
           <span
             className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
-              timeLeft < 60
+              timeLeft < 300
                 ? "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"
                 : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
             }`}

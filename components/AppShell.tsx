@@ -13,7 +13,7 @@ import { subjects } from "@/lib/subjects";
 import Login from "./Login";
 import Navbar from "./Navbar";
 import Dashboard from "./Dashboard";
-import QuizRunner from "./QuizRunner";
+import QuizRunner, { EXAM_QUESTION_COUNT } from "./QuizRunner";
 import Flashcards from "./Flashcards";
 import CalendarView from "./Calendar";
 import Stats from "./Stats";
@@ -84,7 +84,7 @@ export default function AppShell() {
       questions = base;
       nextView = "flashcards";
     } else if (mode === "klausur") {
-      const count = Math.min(15, base.length);
+      const count = Math.min(EXAM_QUESTION_COUNT, base.length);
       questions = shuffle(base).slice(0, count);
       examStyle = true;
     } else if (mode === "wiederholung") {
