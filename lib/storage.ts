@@ -1,4 +1,4 @@
-import { Profile, AttemptRecord, ExamEvent, CardProgress, SubjectId } from "./types";
+import { Profile, AttemptRecord, ExamEvent, CardProgress, SubjectId, MistakeEntry } from "./types";
 
 const PROFILES_KEY = "studyflow_profiles_v1";
 const CURRENT_KEY = "studyflow_current_profile_v1";
@@ -66,6 +66,7 @@ function freshProfile(name: string): Profile {
     updatedAt: new Date().toISOString(),
     attempts: [],
     wrongPool: { soziologie: [], psychologie: [] },
+    mistakeStats: {},
     cardProgress: {},
     examEvents: [],
     xp: 0,
@@ -86,6 +87,7 @@ export function createOrLoadProfile(name: string): Profile {
   } else {
     // Migrate missing fields for older saved profiles
     if (!profile.wrongPool) profile.wrongPool = { soziologie: [], psychologie: [] };
+    if (!profile.mistakeStats) profile.mistakeStats = {};
     if (!profile.cardProgress) profile.cardProgress = {};
     if (!profile.examEvents) profile.examEvents = [];
   }
@@ -133,6 +135,7 @@ export function loadCurrentProfile(): Profile | null {
   const profile = all[name];
   if (!profile) return null;
   if (!profile.wrongPool) profile.wrongPool = { soziologie: [], psychologie: [] };
+  if (!profile.mistakeStats) profile.mistakeStats = {};
   if (!profile.cardProgress) profile.cardProgress = {};
   if (!profile.examEvents) profile.examEvents = [];
   return updateStreak(profile);
@@ -156,6 +159,20 @@ export function addToWrongPool(profile: Profile, subject: SubjectId, questionId:
 export function removeFromWrongPool(profile: Profile, subject: SubjectId, questionId: string) {
   const pool = profile.wrongPool[subject] || [];
   profile.wrongPool[subject] = pool.filter((id) => id !== questionId);
+  saveProfile(profile);
+}
+
+// ---- Fehlerhistorie (wie oft eine Frage insgesamt falsch beantwortet wurde) ----
+export function recordMistake(profile: Profile, questionId: string) {
+  if (!profile.mistakeStats) profile.mistakeStats = {};
+  const existing: MistakeEntry = profile.mistakeStats[questionId] || {
+    questionId,
+    count: 0,
+    lastWrongDate: todayISO(),
+  };
+  existing.count += 1;
+  existing.lastWrongDate = todayISO();
+  profile.mistakeStats[questionId] = existing;
   saveProfile(profile);
 }
 

@@ -54,12 +54,19 @@ export interface ExamEvent {
   notes?: string;
 }
 
+export interface MistakeEntry {
+  questionId: string;
+  count: number; // wie oft insgesamt falsch beantwortet
+  lastWrongDate: string; // ISO date
+}
+
 export interface Profile {
   name: string;
   createdAt: string;
   updatedAt: string;
   attempts: AttemptRecord[];
   wrongPool: Record<SubjectId, string[]>; // aktuelle "Problemfragen" je Fach
+  mistakeStats: Record<string, MistakeEntry>; // Fehlerhistorie je Frage (über alle Modi hinweg)
   cardProgress: Record<string, CardProgress>;
   examEvents: ExamEvent[];
   xp: number;

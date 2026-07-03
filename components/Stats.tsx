@@ -3,7 +3,9 @@
 import { Profile } from "@/lib/types";
 import { subjectList, noteFromPercent } from "@/lib/subjects";
 import { SubjectIcon } from "@/lib/subjectIcon";
-import { Flame, Trophy, BarChart3, CheckCircle2, XCircle } from "lucide-react";
+import { getQuestionById } from "@/lib/questions";
+import { parseLocalISODate } from "@/lib/storage";
+import { Flame, Trophy, BarChart3, CheckCircle2, XCircle, History } from "lucide-react";
 
 export default function Stats({ profile }: { profile: Profile }) {
   const attempts = [...profile.attempts].sort((a, b) => b.date.localeCompare(a.date));
@@ -12,6 +14,11 @@ export default function Stats({ profile }: { profile: Profile }) {
     klausuren.length > 0
       ? Math.round((klausuren.filter((a) => a.passed).length / klausuren.length) * 100)
       : null;
+
+  const mistakes = Object.values(profile.mistakeStats || {})
+    .filter((m) => m.count > 0)
+    .sort((a, b) => b.count - a.count || b.lastWrongDate.localeCompare(a.lastWrongDate))
+    .slice(0, 25);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -96,6 +103,45 @@ export default function Stats({ profile }: { profile: Profile }) {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="mb-3 mt-8 flex items-center gap-2">
+        <History className="h-4 w-4 text-rose-500" />
+        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+          Fehlerhistorie · welche Fragen wie oft falsch waren
+        </p>
+      </div>
+      <div className="space-y-2">
+        {mistakes.length === 0 && (
+          <div className="card p-4 text-sm text-slate-400">
+            Noch keine Fehler aufgezeichnet – weiter so!
+          </div>
+        )}
+        {mistakes.map((m) => {
+          const q = getQuestionById(m.questionId);
+          if (!q) return null;
+          return (
+            <div key={m.questionId} className="card flex items-center justify-between gap-3 p-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <SubjectIcon id={q.subject} className="h-4 w-4 shrink-0 text-indigo-500" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{q.question}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {q.topic} · zuletzt am{" "}
+                    {parseLocalISODate(m.lastWrongDate).toLocaleDateString("de-DE", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                    })}
+                  </p>
+                </div>
+              </div>
+              <span className="shrink-0 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">
+                {m.count}× falsch
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

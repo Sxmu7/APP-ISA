@@ -172,7 +172,7 @@ export default function Dashboard({
           <div>
             <p className="font-medium">Gemischter Test</p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Fragen aus beiden Fächern durcheinander
+              30 Fragen aus beiden Fächern durcheinander
             </p>
           </div>
         </button>

@@ -95,6 +95,9 @@ export default function AppShell() {
       questions = ids
         .map((id) => getQuestionById(id))
         .filter((q): q is Question => Boolean(q));
+    } else if (mode === "mix") {
+      const count = Math.min(EXAM_QUESTION_COUNT, base.length);
+      questions = shuffle(base).slice(0, count);
     } else {
       questions = shuffle(base);
     }

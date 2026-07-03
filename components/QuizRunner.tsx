@@ -7,6 +7,7 @@ import {
   addAttempt,
   addToWrongPool,
   removeFromWrongPool,
+  recordMistake,
   newId,
 } from "@/lib/storage";
 import {
@@ -112,6 +113,7 @@ export default function QuizRunner({
       removeFromWrongPool(profile, question.subject, question.id);
     } else {
       addToWrongPool(profile, question.subject, question.id);
+      recordMistake(profile, question.id);
     }
     setLockedMap((prev) => ({ ...prev, [qId]: true }));
     onProfileChange({ ...profile });
@@ -180,7 +182,10 @@ export default function QuizRunner({
         if (examStyle) removeFromWrongPool(profile, q.subject, q.id);
       } else {
         wrongIds.push(q.id);
-        if (examStyle) addToWrongPool(profile, q.subject, q.id);
+        if (examStyle) {
+          addToWrongPool(profile, q.subject, q.id);
+          recordMistake(profile, q.id);
+        }
       }
     }
     const percent = total > 0 ? Math.round((correct / total) * 100) : 0;
