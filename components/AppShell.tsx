@@ -101,7 +101,12 @@ export default function AppShell() {
   }
 
   function getBaseQuestions(subject: string): Question[] {
-    if (subject === "mix") return allQuestions;
+    const hidden = profile?.hiddenSubjects || [];
+    if (subject === "mix") {
+      const builtIn = allQuestions.filter((q) => !hidden.includes(q.subject));
+      const custom = (profile?.customSubjects || []).flatMap((s) => s.questions);
+      return [...builtIn, ...custom];
+    }
     const custom = findCustomSubject(subject);
     if (custom) return custom.questions;
     return allQuestions.filter((q) => q.subject === subject);
@@ -123,9 +128,12 @@ export default function AppShell() {
       questions = shuffle(base).slice(0, count);
       examStyle = true;
     } else if (mode === "wiederholung") {
+      const hidden = profile.hiddenSubjects || [];
       const ids =
         subject === "mix"
-          ? [...(profile.wrongPool.soziologie || []), ...(profile.wrongPool.psychologie || [])]
+          ? Object.entries(profile.wrongPool)
+              .filter(([subjId]) => !hidden.includes(subjId))
+              .flatMap(([, poolIds]) => poolIds)
           : profile.wrongPool[subject] || [];
       questions = ids
         .map((id) => getQuestionById(id, customPool))
@@ -192,7 +200,12 @@ export default function AppShell() {
       />
 
       {view === "dashboard" && (
-        <Dashboard profile={profile} onStart={onStart} onNavigate={setView} />
+        <Dashboard
+          profile={profile}
+          onStart={onStart}
+          onNavigate={setView}
+          onProfileChange={handleProfileChange}
+        />
       )}
 
       {view === "custom" && (

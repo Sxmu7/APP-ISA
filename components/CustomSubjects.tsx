@@ -16,7 +16,10 @@ import {
   Loader2,
   AlertTriangle,
   Layers,
+  X,
 } from "lucide-react";
+
+const MAX_AI_FILES = 5;
 
 type Step = "list" | "name" | "method" | "excel" | "ai" | "preview";
 
@@ -32,7 +35,7 @@ export default function CustomSubjects({
   const [step, setStep] = useState<Step>("list");
   const [name, setName] = useState("");
   const [aiText, setAiText] = useState("");
-  const [aiFile, setAiFile] = useState<File | null>(null);
+  const [aiFiles, setAiFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -44,7 +47,7 @@ export default function CustomSubjects({
     setStep("list");
     setName("");
     setAiText("");
-    setAiFile(null);
+    setAiFiles([]);
     setError(null);
     setWarnings([]);
     setParsed([]);
@@ -94,8 +97,8 @@ export default function CustomSubjects({
   }
 
   async function handleAiSubmit() {
-    if (!aiText.trim() && !aiFile) {
-      setError("Bitte füge Text ein oder lade eine PDF-Datei hoch.");
+    if (!aiText.trim() && aiFiles.length === 0) {
+      setError("Bitte füge Text ein oder lade mindestens eine PDF-Datei hoch.");
       return;
     }
     setError(null);
@@ -103,7 +106,7 @@ export default function CustomSubjects({
     try {
       const fd = new FormData();
       if (aiText.trim()) fd.append("text", aiText.trim());
-      if (aiFile) fd.append("file", aiFile);
+      for (const f of aiFiles) fd.append("files", f);
       const res = await fetch("/api/parse-questions", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Verarbeitung fehlgeschlagen.");
@@ -317,23 +320,57 @@ export default function CustomSubjects({
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-              Oder PDF hochladen (optional)
+              Oder ein oder mehrere PDFs hochladen (optional)
             </label>
             <input
               ref={pdfInputRef}
               type="file"
               accept="application/pdf"
-              onChange={(e) => setAiFile(e.target.files?.[0] || null)}
+              multiple
+              onChange={(e) => {
+                const newFiles = Array.from(e.target.files || []);
+                setAiFiles((prev) =>
+                  [...prev, ...newFiles]
+                    .filter(
+                      (f, i, arr) =>
+                        arr.findIndex((f2) => f2.name === f.name && f2.size === f.size) === i
+                    )
+                    .slice(0, MAX_AI_FILES)
+                );
+                e.target.value = "";
+              }}
               className="hidden"
             />
             <button
               type="button"
               onClick={() => pdfInputRef.current?.click()}
+              disabled={aiFiles.length >= MAX_AI_FILES}
               className="btn-secondary w-full"
             >
               <Upload className="h-4 w-4" />
-              {aiFile ? aiFile.name : "PDF auswählen"}
+              {aiFiles.length === 0
+                ? "PDFs auswählen"
+                : `Weitere PDF hinzufügen (${aiFiles.length}/${MAX_AI_FILES})`}
             </button>
+            {aiFiles.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {aiFiles.map((f, i) => (
+                  <li
+                    key={`${f.name}-${f.size}`}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs dark:bg-slate-800"
+                  >
+                    <span className="truncate">{f.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setAiFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                      className="shrink-0 text-slate-400 hover:text-rose-500"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           {error && (
             <p className="flex items-start gap-1.5 text-xs text-rose-500">

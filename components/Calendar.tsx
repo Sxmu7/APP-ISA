@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Profile, ExamEvent, SubjectId } from "@/lib/types";
 import { subjectList } from "@/lib/subjects";
 import {
@@ -12,8 +12,17 @@ import {
   toLocalISODate,
   parseLocalISODate,
 } from "@/lib/storage";
+import { generateIcs, parseIcsToEvents } from "@/lib/ics";
 import { SubjectIcon } from "@/lib/subjectIcon";
-import { ChevronLeft, ChevronRight, Plus, Trash2, CalendarDays } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Trash2,
+  CalendarDays,
+  Download,
+  Upload,
+} from "lucide-react";
 
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const MONTHS = [
@@ -34,6 +43,8 @@ export default function CalendarView({
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState<SubjectId | "sonstiges">("soziologie");
   const [notes, setNotes] = useState("");
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const icsInputRef = useRef<HTMLInputElement>(null);
 
   const eventsByDate = useMemo(() => {
     const map: Record<string, ExamEvent[]> = {};
@@ -73,16 +84,98 @@ export default function CalendarView({
     onProfileChange({ ...profile });
   }
 
+  function exportIcs() {
+    const ics = generateIcs(profile);
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "studyflow-kalender.ics";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  async function importIcsFile(file: File) {
+    setImportMessage(null);
+    try {
+      const text = await file.text();
+      const parsed = parseIcsToEvents(text);
+      const existing = new Set(profile.examEvents.map((e) => `${e.date}__${e.title}`));
+      let added = 0;
+      for (const ev of parsed) {
+        const key = `${ev.date}__${ev.title}`;
+        if (existing.has(key)) continue;
+        existing.add(key);
+        addExamEvent(profile, {
+          id: newId(),
+          subject: "sonstiges",
+          title: ev.title,
+          date: ev.date,
+          notes: ev.notes,
+        });
+        added += 1;
+      }
+      onProfileChange({ ...profile });
+      setImportMessage(
+        added > 0
+          ? `${added} Termin${added === 1 ? "" : "e"} importiert.`
+          : parsed.length === 0
+          ? "Keine Termine in der Datei gefunden."
+          : "Alle Termine waren schon vorhanden."
+      );
+    } catch {
+      setImportMessage("Die Datei konnte nicht gelesen werden. Ist es eine gültige .ics-Datei?");
+    }
+  }
+
   const sortedUpcoming = [...profile.examEvents]
     .filter((e) => e.date >= todayISO())
     .sort((a, b) => a.date.localeCompare(b.date));
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
-      <div className="mb-6 flex items-center gap-2">
-        <CalendarDays className="h-5 w-5 text-indigo-500" />
-        <h1 className="text-xl font-bold">Klausurkalender</h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <CalendarDays className="h-5 w-5 text-indigo-500" />
+          <h1 className="text-xl font-bold">Klausurkalender</h1>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={exportIcs} className="btn-secondary py-1.5 text-xs">
+            <Download className="h-3.5 w-3.5" />
+            Als .ics exportieren
+          </button>
+          <input
+            ref={icsInputRef}
+            type="file"
+            accept=".ics,text/calendar"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) importIcsFile(f);
+              e.target.value = "";
+            }}
+          />
+          <button
+            onClick={() => icsInputRef.current?.click()}
+            className="btn-secondary py-1.5 text-xs"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            .ics importieren
+          </button>
+        </div>
       </div>
+
+      {importMessage && (
+        <div className="mb-4 rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+          {importMessage}
+        </div>
+      )}
+      <p className="mb-6 text-xs text-slate-400">
+        Exportierte Datei kann in Google Calendar, Apple Kalender oder Outlook importiert
+        werden. Import funktioniert mit .ics-Exports aus diesen Kalendern.
+      </p>
 
       <div className="grid gap-6 md:grid-cols-[1fr_320px]">
         <div className="card p-4">
