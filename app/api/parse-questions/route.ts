@@ -3,6 +3,9 @@ import { verifySessionToken, COOKIE_NAME } from "@/lib/auth";
 
 export const maxDuration = 60;
 
+// Kostenloses Gemini-Modell (Google AI Studio Free Tier).
+const GEMINI_MODEL = "gemini-2.5-flash";
+
 const SYSTEM_PROMPT = `Du bekommst den Inhalt eines Dokuments (Vorlesungsskript, Notizen, Text, o.ä.) und
 sollst daraus Multiple-Choice-Quizfragen für eine Lern-App extrahieren bzw. erstellen.
 
@@ -15,40 +18,35 @@ Regeln:
   richtige Antworten sind erlaubt, wenn das inhaltlich passt).
 - Formuliere Fragen und Antworten auf Deutsch, prägnant und eindeutig.
 - Erfinde keine Fakten, die nicht im Dokument stehen oder logisch zwingend daraus folgen.
-- Vergib zu jeder Frage ein kurzes Themen-Schlagwort (topic), z.B. den Abschnittstitel.`;
+- Vergib zu jeder Frage ein kurzes Themen-Schlagwort (topic), z.B. den Abschnittstitel.
+- Antworte ausschließlich mit dem geforderten JSON-Format, ohne zusätzlichen Text.`;
 
-const EXTRACT_TOOL = {
-  name: "extract_questions",
-  description: "Speichert die aus dem Dokument extrahierten bzw. erstellten Quizfragen.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      questions: {
-        type: "array" as const,
-        items: {
-          type: "object" as const,
-          properties: {
-            topic: { type: "string" as const, description: "Kurzes Themen-Schlagwort" },
-            question: { type: "string" as const },
-            options: {
-              type: "array" as const,
-              items: { type: "string" as const },
-              minItems: 2,
-              maxItems: 6,
-            },
-            correctIndices: {
-              type: "array" as const,
-              items: { type: "integer" as const },
-              minItems: 1,
-              description: "0-basierte Indizes der richtigen Antwort(en) in 'options'",
-            },
+// Gemini "controlled generation" Schema (OpenAPI-Subset, Typen in Großbuchstaben).
+const RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    questions: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          topic: { type: "STRING", description: "Kurzes Themen-Schlagwort" },
+          question: { type: "STRING" },
+          options: {
+            type: "ARRAY",
+            items: { type: "STRING" },
           },
-          required: ["question", "options", "correctIndices"],
+          correctIndices: {
+            type: "ARRAY",
+            items: { type: "INTEGER" },
+            description: "0-basierte Indizes der richtigen Antwort(en) in 'options'",
+          },
         },
+        required: ["question", "options", "correctIndices"],
       },
     },
-    required: ["questions"],
   },
+  required: ["questions"],
 };
 
 export async function POST(req: NextRequest) {
@@ -59,12 +57,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Nicht eingeloggt." }, { status: 401 });
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
         {
           error:
-            "ANTHROPIC_API_KEY fehlt. Bitte in den Vercel-Projekteinstellungen unter Environment Variables hinterlegen.",
+            "GEMINI_API_KEY fehlt. Bitte einen kostenlosen Key auf aistudio.google.com/apikey erstellen und in den Vercel-Projekteinstellungen unter Environment Variables hinterlegen.",
         },
         { status: 500 }
       );
@@ -81,7 +79,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const content: Record<string, unknown>[] = [];
+    const parts: Record<string, unknown>[] = [];
 
     if (file instanceof File) {
       if (file.type !== "application/pdf") {
@@ -91,55 +89,58 @@ export async function POST(req: NextRequest) {
         );
       }
       const buf = Buffer.from(await file.arrayBuffer());
-      content.push({
-        type: "document",
-        source: {
-          type: "base64",
-          media_type: "application/pdf",
+      parts.push({
+        inline_data: {
+          mime_type: "application/pdf",
           data: buf.toString("base64"),
         },
       });
     }
 
     if (typeof text === "string" && text.trim()) {
-      content.push({ type: "text", text: text.trim().slice(0, 100000) });
+      parts.push({ text: text.trim().slice(0, 100000) });
     }
 
-    content.push({
-      type: "text",
-      text: "Extrahiere bzw. erstelle jetzt die Quizfragen aus dem obigen Inhalt und rufe das Tool 'extract_questions' auf.",
+    parts.push({
+      text: "Extrahiere bzw. erstelle jetzt die Quizfragen aus dem obigen Inhalt als JSON gemäß Schema.",
     });
 
-    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-5",
-        max_tokens: 8000,
-        system: SYSTEM_PROMPT,
-        tools: [EXTRACT_TOOL],
-        tool_choice: { type: "tool", name: "extract_questions" },
-        messages: [{ role: "user", content }],
-      }),
-    });
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: [{ role: "user", parts }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: RESPONSE_SCHEMA,
+            maxOutputTokens: 8000,
+          },
+        }),
+      }
+    );
 
-    if (!anthropicRes.ok) {
-      const errText = await anthropicRes.text();
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
       return NextResponse.json(
         { error: `KI-Anfrage fehlgeschlagen: ${errText.slice(0, 300)}` },
         { status: 502 }
       );
     }
 
-    const data = await anthropicRes.json();
-    const toolUse = (data.content || []).find(
-      (block: { type: string }) => block.type === "tool_use"
-    );
-    const questions = toolUse?.input?.questions;
+    const data = await geminiRes.json();
+    const rawText: string | undefined =
+      data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || "").join("");
+
+    let questions: unknown[] = [];
+    try {
+      const parsedJson = rawText ? JSON.parse(rawText) : null;
+      questions = Array.isArray(parsedJson?.questions) ? parsedJson.questions : [];
+    } catch {
+      questions = [];
+    }
 
     if (!Array.isArray(questions) || questions.length === 0) {
       return NextResponse.json(
@@ -148,7 +149,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const cleaned = questions
+    const cleaned = (questions as Record<string, unknown>[])
       .filter(
         (q) =>
           q &&
@@ -159,12 +160,15 @@ export async function POST(req: NextRequest) {
           q.correctIndices.length > 0
       )
       .map((q) => ({
-        topic: typeof q.topic === "string" && q.topic.trim() ? q.topic.trim() : "Allgemein",
-        question: q.question,
-        options: q.options.map((o: unknown) => String(o)),
-        correctIndices: q.correctIndices
-          .map((i: unknown) => Number(i))
-          .filter((i: number) => Number.isInteger(i) && i >= 0 && i < q.options.length),
+        topic:
+          typeof q.topic === "string" && q.topic.trim() ? q.topic.trim() : "Allgemein",
+        question: q.question as string,
+        options: (q.options as unknown[]).map((o) => String(o)),
+        correctIndices: (q.correctIndices as unknown[])
+          .map((i) => Number(i))
+          .filter(
+            (i) => Number.isInteger(i) && i >= 0 && i < (q.options as unknown[]).length
+          ),
       }))
       .filter((q) => q.correctIndices.length > 0);
 
