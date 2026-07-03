@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "StudyFlow – Lern-App",
     short_name: "StudyFlow",
     description:
-      "Persönliche Lern-App für Soziologie & Psychologie mit Übungsmodus, Klausursimulation, Karteikarten und Klausurkalender.",
+      "Persönliche Lern-App mit Übungsmodus, Klausursimulation, Karteikarten und Klausurkalender.",
     start_url: "/",
     scope: "/",
     display: "standalone",
