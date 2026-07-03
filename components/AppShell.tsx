@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Profile, SubjectId, LearnMode, Question, View } from "@/lib/types";
+import { Profile, LearnMode, Question, View } from "@/lib/types";
 import { loadCurrentProfile, hydrateProfile, logout } from "@/lib/storage";
 import { apiMe, apiFetchProfile, apiRegister, apiLogin, apiLogout } from "@/lib/apiClient";
-import { allQuestions, questionsBySubject, shuffle, getQuestionById } from "@/lib/questions";
+import { allQuestions, shuffle, getQuestionById } from "@/lib/questions";
 import { subjects } from "@/lib/subjects";
 import Login from "./Login";
 import Navbar from "./Navbar";
@@ -13,11 +13,12 @@ import QuizRunner, { EXAM_QUESTION_COUNT } from "./QuizRunner";
 import Flashcards from "./Flashcards";
 import CalendarView from "./Calendar";
 import Stats from "./Stats";
+import CustomSubjects from "./CustomSubjects";
 
 interface Session {
   id: number;
   title: string;
-  subject: SubjectId | "mix";
+  subject: string; // SubjectId, "mix" oder eigene CustomSubject-ID
   mode: LearnMode;
   questions: Question[];
   examStyle: boolean;
@@ -86,14 +87,30 @@ export default function AppShell() {
     setProfile(p);
   }
 
-  function buildTitle(subject: SubjectId | "mix", mode: LearnMode) {
-    const subjectName = subject === "mix" ? "Gemischt" : subjects[subject].name;
+  function findCustomSubject(subject: string) {
+    return profile?.customSubjects?.find((s) => s.id === subject);
+  }
+
+  function buildTitle(subject: string, mode: LearnMode) {
+    let subjectName = "Gemischt";
+    if (subject !== "mix") {
+      const builtIn = (subjects as Record<string, { name: string }>)[subject];
+      subjectName = builtIn ? builtIn.name : findCustomSubject(subject)?.name || "Eigenes Fach";
+    }
     return `${subjectName} · ${MODE_LABELS[mode]}`;
   }
 
-  function onStart(subject: SubjectId | "mix", mode: LearnMode) {
+  function getBaseQuestions(subject: string): Question[] {
+    if (subject === "mix") return allQuestions;
+    const custom = findCustomSubject(subject);
+    if (custom) return custom.questions;
+    return allQuestions.filter((q) => q.subject === subject);
+  }
+
+  function onStart(subject: string, mode: LearnMode) {
     if (!profile) return;
-    const base = subject === "mix" ? allQuestions : questionsBySubject(subject);
+    const base = getBaseQuestions(subject);
+    const customPool = (profile.customSubjects || []).flatMap((s) => s.questions);
     let questions: Question[] = [];
     let examStyle = false;
     let nextView: View = "quiz";
@@ -108,10 +125,10 @@ export default function AppShell() {
     } else if (mode === "wiederholung") {
       const ids =
         subject === "mix"
-          ? [...profile.wrongPool.soziologie, ...profile.wrongPool.psychologie]
+          ? [...(profile.wrongPool.soziologie || []), ...(profile.wrongPool.psychologie || [])]
           : profile.wrongPool[subject] || [];
       questions = ids
-        .map((id) => getQuestionById(id))
+        .map((id) => getQuestionById(id, customPool))
         .filter((q): q is Question => Boolean(q));
     } else if (mode === "mix") {
       const count = Math.min(EXAM_QUESTION_COUNT, base.length);
@@ -176,6 +193,14 @@ export default function AppShell() {
 
       {view === "dashboard" && (
         <Dashboard profile={profile} onStart={onStart} onNavigate={setView} />
+      )}
+
+      {view === "custom" && (
+        <CustomSubjects
+          profile={profile}
+          onProfileChange={handleProfileChange}
+          onExit={backToDashboard}
+        />
       )}
 
       {view === "quiz" && session && (

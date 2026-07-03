@@ -11,7 +11,8 @@ export type Difficulty = "leicht" | "mittel" | "schwer";
 
 export interface Question {
   id: string;
-  subject: SubjectId;
+  /** Bei eingebauten Fächern "soziologie"/"psychologie", bei eigenen Fächern die CustomSubject-ID. */
+  subject: string;
   topic: string;
   question: string;
   options: string[];
@@ -21,13 +22,21 @@ export interface Question {
   difficulty?: Difficulty;
 }
 
+/** Ein vom Nutzer selbst hochgeladenes/erstelltes Lernfach mit eigenen Fragen. */
+export interface CustomSubject {
+  id: string;
+  name: string;
+  createdAt: string;
+  questions: Question[];
+}
+
 export type LearnMode = "uebung" | "klausur" | "karteikarten" | "wiederholung" | "mix";
 
-export type View = "login" | "dashboard" | "quiz" | "flashcards" | "calendar" | "stats";
+export type View = "login" | "dashboard" | "quiz" | "flashcards" | "calendar" | "stats" | "custom";
 
 export interface AttemptRecord {
   id: string;
-  subject: SubjectId | "mix";
+  subject: string; // SubjectId, "mix" oder eine eigene CustomSubject-ID
   mode: LearnMode;
   date: string; // ISO
   correct: number;
@@ -65,10 +74,11 @@ export interface Profile {
   createdAt: string;
   updatedAt: string;
   attempts: AttemptRecord[];
-  wrongPool: Record<SubjectId, string[]>; // aktuelle "Problemfragen" je Fach
+  wrongPool: Record<string, string[]>; // aktuelle "Problemfragen" je Fach (auch eigene Fächer)
   mistakeStats: Record<string, MistakeEntry>; // Fehlerhistorie je Frage (über alle Modi hinweg)
   cardProgress: Record<string, CardProgress>;
   examEvents: ExamEvent[];
+  customSubjects: CustomSubject[]; // eigene, selbst hochgeladene Lernfächer
   xp: number;
   streakDays: number;
   lastActiveDate: string; // ISO date

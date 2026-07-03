@@ -8,8 +8,10 @@ export function questionsBySubject(subject: SubjectId): Question[] {
   return allQuestions.filter((q) => q.subject === subject);
 }
 
-export function getQuestionById(id: string): Question | undefined {
-  return allQuestions.find((q) => q.id === id);
+// "extra" erlaubt die Suche auch in Fragen eigener, selbst hochgeladener
+// Fächer (die nicht Teil des fest eingebauten allQuestions-Pools sind).
+export function getQuestionById(id: string, extra: Question[] = []): Question | undefined {
+  return allQuestions.find((q) => q.id === id) || extra.find((q) => q.id === id);
 }
 
 export function shuffle<T>(arr: T[]): T[] {

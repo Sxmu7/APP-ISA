@@ -20,6 +20,16 @@ export default function Stats({ profile }: { profile: Profile }) {
     .sort((a, b) => b.count - a.count || b.lastWrongDate.localeCompare(a.lastWrongDate))
     .slice(0, 25);
 
+  const customQuestionPool = (profile.customSubjects || []).flatMap((s) => s.questions);
+
+  function subjectDisplayName(subject: string): string {
+    if (subject === "mix") return "Gemischt";
+    const builtIn = subjectList.find((s) => s.id === subject);
+    if (builtIn) return builtIn.name;
+    const custom = profile.customSubjects?.find((s) => s.id === subject);
+    return custom?.name || subject;
+  }
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <div className="mb-6 flex items-center gap-2">
@@ -81,8 +91,8 @@ export default function Stats({ profile }: { profile: Profile }) {
                 <XCircle className="h-4 w-4 shrink-0 text-rose-500" />
               )}
               <div>
-                <p className="text-sm font-medium capitalize">
-                  {a.subject} · {a.mode}
+                <p className="text-sm font-medium">
+                  {subjectDisplayName(a.subject)} · {a.mode}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {new Date(a.date).toLocaleDateString("de-DE", {
@@ -118,7 +128,7 @@ export default function Stats({ profile }: { profile: Profile }) {
           </div>
         )}
         {mistakes.map((m) => {
-          const q = getQuestionById(m.questionId);
+          const q = getQuestionById(m.questionId, customQuestionPool);
           if (!q) return null;
           return (
             <div key={m.questionId} className="card flex items-center justify-between gap-3 p-3">

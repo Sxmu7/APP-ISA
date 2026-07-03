@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Question, Profile, LearnMode, SubjectId, AttemptRecord } from "@/lib/types";
+import { Question, Profile, LearnMode, AttemptRecord } from "@/lib/types";
 import { noteFromPercent } from "@/lib/subjects";
 import {
   addAttempt,
@@ -25,7 +25,7 @@ interface QuizRunnerProps {
   title: string;
   questions: Question[];
   mode: LearnMode;
-  subjectForRecord: SubjectId | "mix";
+  subjectForRecord: string; // SubjectId, "mix" oder eigene CustomSubject-ID
   examStyle: boolean; // true = Klausursimulation (fester 60-Min-Timer, kein Sofort-Feedback, 50%-Grenze)
   profile: Profile;
   onProfileChange: (p: Profile) => void;

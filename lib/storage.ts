@@ -1,4 +1,4 @@
-import { Profile, AttemptRecord, ExamEvent, CardProgress, SubjectId, MistakeEntry } from "./types";
+import { Profile, AttemptRecord, ExamEvent, CardProgress, MistakeEntry, CustomSubject } from "./types";
 import { apiSyncProfile } from "./apiClient";
 
 const PROFILES_KEY = "studyflow_profiles_v1";
@@ -70,6 +70,7 @@ function freshProfile(name: string): Profile {
     mistakeStats: {},
     cardProgress: {},
     examEvents: [],
+    customSubjects: [],
     xp: 0,
     streakDays: 0,
     lastActiveDate: todayISO(),
@@ -91,6 +92,7 @@ export function createOrLoadProfile(name: string): Profile {
     if (!profile.mistakeStats) profile.mistakeStats = {};
     if (!profile.cardProgress) profile.cardProgress = {};
     if (!profile.examEvents) profile.examEvents = [];
+    if (!profile.customSubjects) profile.customSubjects = [];
   }
   setCurrentProfileName(clean);
   return updateStreak(profile);
@@ -151,6 +153,7 @@ export function loadCurrentProfile(): Profile | null {
   if (!profile.mistakeStats) profile.mistakeStats = {};
   if (!profile.cardProgress) profile.cardProgress = {};
   if (!profile.examEvents) profile.examEvents = [];
+  if (!profile.customSubjects) profile.customSubjects = [];
   return updateStreak(profile);
 }
 
@@ -162,17 +165,40 @@ export function addAttempt(profile: Profile, attempt: AttemptRecord) {
 }
 
 // ---- Wrong-answer pool (Wiederholungsmodus) ----
-export function addToWrongPool(profile: Profile, subject: SubjectId, questionId: string) {
+// subject ist entweder ein eingebautes Fach ("soziologie"/"psychologie")
+// oder die ID eines eigenen, selbst hochgeladenen Fachs.
+export function addToWrongPool(profile: Profile, subject: string, questionId: string) {
   const pool = profile.wrongPool[subject] || [];
   if (!pool.includes(questionId)) pool.push(questionId);
   profile.wrongPool[subject] = pool;
   saveProfile(profile);
 }
 
-export function removeFromWrongPool(profile: Profile, subject: SubjectId, questionId: string) {
+export function removeFromWrongPool(profile: Profile, subject: string, questionId: string) {
   const pool = profile.wrongPool[subject] || [];
   profile.wrongPool[subject] = pool.filter((id) => id !== questionId);
   saveProfile(profile);
+}
+
+// ---- Eigene Fächer ----
+export function addCustomSubject(profile: Profile, subject: CustomSubject) {
+  if (!profile.customSubjects) profile.customSubjects = [];
+  profile.customSubjects.push(subject);
+  saveProfile(profile);
+}
+
+export function removeCustomSubject(profile: Profile, id: string) {
+  profile.customSubjects = (profile.customSubjects || []).filter((s) => s.id !== id);
+  delete profile.wrongPool[id];
+  saveProfile(profile);
+}
+
+export function findCustomQuestionById(profile: Profile, questionId: string) {
+  for (const s of profile.customSubjects || []) {
+    const q = s.questions.find((q) => q.id === questionId);
+    if (q) return q;
+  }
+  return undefined;
 }
 
 // ---- Fehlerhistorie (wie oft eine Frage insgesamt falsch beantwortet wurde) ----

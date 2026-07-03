@@ -13,6 +13,7 @@ export function createEmptyProfile(name: string): Profile {
     mistakeStats: {},
     cardProgress: {},
     examEvents: [],
+    customSubjects: [],
     xp: 0,
     streakDays: 0,
     lastActiveDate: now.slice(0, 10),

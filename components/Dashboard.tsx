@@ -13,6 +13,8 @@ import {
   Shuffle,
   CalendarClock,
   TrendingUp,
+  FolderPlus,
+  FileText,
 } from "lucide-react";
 
 export default function Dashboard({
@@ -21,8 +23,8 @@ export default function Dashboard({
   onNavigate,
 }: {
   profile: Profile;
-  onStart: (subject: SubjectId | "mix", mode: LearnMode) => void;
-  onNavigate: (v: "calendar" | "stats") => void;
+  onStart: (subject: string, mode: LearnMode) => void;
+  onNavigate: (v: "calendar" | "stats" | "custom") => void;
 }) {
   const nextExams = upcomingExamEvents(profile).slice(0, 3);
 
@@ -159,6 +161,101 @@ export default function Dashboard({
             </div>
           );
         })}
+      </div>
+
+      <div className="mt-8 animate-fade-in">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Meine Fächer
+          </h2>
+          <button
+            onClick={() => onNavigate("custom")}
+            className="btn-secondary py-1.5 text-xs"
+          >
+            <FolderPlus className="h-3.5 w-3.5" />
+            Fach hinzufügen
+          </button>
+        </div>
+
+        {(!profile.customSubjects || profile.customSubjects.length === 0) ? (
+          <button
+            onClick={() => onNavigate("custom")}
+            className="card flex w-full items-center gap-3 border-dashed p-5 text-left transition hover:shadow-md"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white">
+              <FileText className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-medium">Eigenes Lernmaterial hinzufügen</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Excel/CSV hochladen oder per KI aus Text/PDF Fragen erstellen lassen
+              </p>
+            </div>
+          </button>
+        ) : (
+          <div className="grid gap-6 sm:grid-cols-2">
+            {profile.customSubjects.map((cs) => {
+              const wrongCount = profile.wrongPool[cs.id]?.length || 0;
+              const dueCards = cs.questions.filter((q) => isCardDue(profile, q.id)).length;
+              return (
+                <div key={cs.id} className="card animate-fade-in overflow-hidden">
+                  <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-5 text-white">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-5 w-5" />
+                      <h2 className="text-lg font-semibold">{cs.name}</h2>
+                    </div>
+                    <p className="mt-1 text-xs text-white/80">
+                      {cs.questions.length} Fragen verfügbar
+                    </p>
+                  </div>
+                  <div className="space-y-3 p-4">
+                    <div className="flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">
+                        {dueCards} Karteikarten fällig
+                      </span>
+                      {wrongCount > 0 && (
+                        <span className="rounded-full bg-rose-100 px-2.5 py-1 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">
+                          {wrongCount} zum Wiederholen
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => onStart(cs.id, "uebung")}
+                        className="btn-secondary justify-start"
+                      >
+                        <BookOpen className="h-4 w-4" />
+                        Üben
+                      </button>
+                      <button
+                        onClick={() => onStart(cs.id, "klausur")}
+                        className="btn-secondary justify-start"
+                      >
+                        <FileCheck2 className="h-4 w-4" />
+                        Klausur
+                      </button>
+                      <button
+                        onClick={() => onStart(cs.id, "karteikarten")}
+                        className="btn-secondary justify-start"
+                      >
+                        <Layers className="h-4 w-4" />
+                        Karteikarten
+                      </button>
+                      <button
+                        onClick={() => onStart(cs.id, "wiederholung")}
+                        disabled={wrongCount === 0}
+                        className="btn-secondary justify-start"
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                        Fehler ({wrongCount})
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
