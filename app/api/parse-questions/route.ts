@@ -6,11 +6,14 @@ export const maxDuration = 60;
 // Kostenloses Gemini-Modell (Google AI Studio Free Tier).
 const GEMINI_MODEL = "gemini-2.5-flash";
 
-const SYSTEM_PROMPT = `Du bekommst den Inhalt von einem oder mehreren Dokumenten (Vorlesungsskripte,
+const SYSTEM_PROMPT = `Du bekommst Textinhalt von einem oder mehreren Dokumenten (Vorlesungsskripte,
 Notizen, Text, o.ä.) und sollst daraus gemeinsam Multiple-Choice-Quizfragen für eine Lern-App
 extrahieren bzw. erstellen.
 
 Regeln:
+- Der Text kann automatisiert aus einem PDF extrahiert worden sein und deshalb unsaubere
+  Zeilenumbrüche, Kopf-/Fußzeilen-Reste oder Spaltensprünge enthalten – interpretiere ihn trotzdem
+  sinnvoll und ignoriere offensichtlichen Textmüll (Seitenzahlen, wiederholte Kopfzeilen, o.ä.).
 - Wenn die Dokumente bereits fertige Prüfungsfragen mit Antwortoptionen enthalten, übernimm sie
   möglichst originalgetreu (Frage, Antwortmöglichkeiten, richtige Antwort).
 - Wenn die Dokumente nur Fließtext/Notizen ohne fertige Fragen enthalten, erstelle selbst sinnvolle
@@ -71,49 +74,25 @@ export async function POST(req: NextRequest) {
 
     const formData = await req.formData();
     const text = formData.get("text");
-    // Abwärtskompatibel: "files" (mehrere) bevorzugt, "file" (einzeln) als Fallback.
-    const files = [...formData.getAll("files"), formData.get("file")].filter(
-      (f): f is File => f instanceof File
-    );
 
-    if (!text && files.length === 0) {
+    // PDFs werden inzwischen clientseitig im Browser zu Text extrahiert (siehe
+    // lib/pdfText.ts) statt als Binärdatei hochgeladen – das umgeht die
+    // ca. 4,5-MB-Body-Grenze von Vercel Serverless Functions vollständig, die
+    // bei größeren gescannten Skripten vorher zu "Load failed" geführt hat.
+    if (typeof text !== "string" || !text.trim()) {
       return NextResponse.json(
         { error: "Bitte Text einfügen oder mindestens eine PDF-Datei hochladen." },
         { status: 400 }
       );
     }
-    if (files.length > 5) {
-      return NextResponse.json(
-        { error: "Bitte maximal 5 Dateien gleichzeitig hochladen." },
-        { status: 400 }
-      );
-    }
 
-    const parts: Record<string, unknown>[] = [];
-
-    for (const file of files) {
-      if (file.type !== "application/pdf") {
-        return NextResponse.json(
-          { error: `"${file.name}" ist keine PDF-Datei. Nur PDFs werden unterstützt.` },
-          { status: 400 }
-        );
-      }
-      const buf = Buffer.from(await file.arrayBuffer());
-      parts.push({
-        inline_data: {
-          mime_type: "application/pdf",
-          data: buf.toString("base64"),
-        },
-      });
-    }
-
-    if (typeof text === "string" && text.trim()) {
-      parts.push({ text: text.trim().slice(0, 100000) });
-    }
-
-    parts.push({
-      text: "Extrahiere bzw. erstelle jetzt die Quizfragen aus dem/den obigen Dokument(en) als JSON gemäß Schema.",
-    });
+    const MAX_TEXT_CHARS = 300000;
+    const parts: Record<string, unknown>[] = [
+      { text: text.trim().slice(0, MAX_TEXT_CHARS) },
+      {
+        text: "Extrahiere bzw. erstelle jetzt die Quizfragen aus dem/den obigen Dokument(en) als JSON gemäß Schema.",
+      },
+    ];
 
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,

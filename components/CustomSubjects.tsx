@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import { Profile, CustomSubject, Question } from "@/lib/types";
 import { addCustomSubject, removeCustomSubject, newId } from "@/lib/storage";
 import { parseRowsToQuestions, ParsedQuestion } from "@/lib/spreadsheetParser";
+import { extractPdfText } from "@/lib/pdfText";
 import {
   ArrowLeft,
   BookPlus,
@@ -17,9 +18,20 @@ import {
   AlertTriangle,
   Layers,
   X,
+  FileText,
 } from "lucide-react";
 
 const MAX_AI_FILES = 5;
+// Text ist um Größenordnungen kleiner als das PDF-Original – trotzdem eine
+// großzügige Obergrenze, damit eine Anfrage nicht ausufert.
+const MAX_TEXT_CHARS = 300000;
+
+interface PdfDoc {
+  name: string;
+  text: string;
+  pageCount: number;
+  looksScanned: boolean;
+}
 
 type Step = "list" | "name" | "method" | "excel" | "ai" | "preview";
 
@@ -35,7 +47,8 @@ export default function CustomSubjects({
   const [step, setStep] = useState<Step>("list");
   const [name, setName] = useState("");
   const [aiText, setAiText] = useState("");
-  const [aiFiles, setAiFiles] = useState<File[]>([]);
+  const [pdfDocs, setPdfDocs] = useState<PdfDoc[]>([]);
+  const [extracting, setExtracting] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -47,7 +60,8 @@ export default function CustomSubjects({
     setStep("list");
     setName("");
     setAiText("");
-    setAiFiles([]);
+    setPdfDocs([]);
+    setExtracting(null);
     setError(null);
     setWarnings([]);
     setParsed([]);
@@ -96,21 +110,72 @@ export default function CustomSubjects({
     }
   }
 
+  async function handlePdfFiles(files: File[]) {
+    setError(null);
+    const room = MAX_AI_FILES - pdfDocs.length;
+    const toProcess = files.slice(0, Math.max(room, 0));
+    for (const file of toProcess) {
+      setExtracting(file.name);
+      try {
+        const result = await extractPdfText(file);
+        setPdfDocs((prev) => [
+          ...prev,
+          { name: file.name, text: result.text, pageCount: result.pageCount, looksScanned: result.looksScanned },
+        ]);
+      } catch {
+        setError(
+          `Text aus "${file.name}" konnte nicht gelesen werden. Ist die Datei ein gültiges, nicht passwortgeschütztes PDF?`
+        );
+      }
+    }
+    setExtracting(null);
+  }
+
+  const totalTextChars =
+    aiText.trim().length + pdfDocs.reduce((sum, d) => sum + d.text.length, 0);
+  const textTooLong = totalTextChars > MAX_TEXT_CHARS;
+  const scannedDocs = pdfDocs.filter((d) => d.looksScanned);
+
   async function handleAiSubmit() {
-    if (!aiText.trim() && aiFiles.length === 0) {
+    if (!aiText.trim() && pdfDocs.length === 0) {
       setError("Bitte füge Text ein oder lade mindestens eine PDF-Datei hoch.");
+      return;
+    }
+    if (textTooLong) {
+      setError(
+        `Der Text ist zusammen zu lang (${totalTextChars.toLocaleString("de-DE")} von max. ${MAX_TEXT_CHARS.toLocaleString(
+          "de-DE"
+        )} Zeichen). Bitte weniger Dokumente auf einmal verarbeiten.`
+      );
       return;
     }
     setError(null);
     setLoading(true);
     try {
+      const combinedParts = [aiText.trim()];
+      for (const doc of pdfDocs) {
+        combinedParts.push(`--- Dokument: ${doc.name} ---\n${doc.text}`);
+      }
+      const combinedText = combinedParts.filter(Boolean).join("\n\n");
+
       const fd = new FormData();
-      if (aiText.trim()) fd.append("text", aiText.trim());
-      for (const f of aiFiles) fd.append("files", f);
+      fd.append("text", combinedText);
       const res = await fetch("/api/parse-questions", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Verarbeitung fehlgeschlagen.");
-      const questions: ParsedQuestion[] = data.questions;
+
+      // Falls der Server ausnahmsweise keine gültige JSON-Antwort liefert
+      // (z.B. eine Fehlerseite), würde res.json() sonst mit einem
+      // kryptischen Parse-Fehler abstürzen – das fangen wir sauber ab.
+      let data: { questions?: ParsedQuestion[]; error?: string };
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(
+          `Unerwartete Antwort vom Server (Status ${res.status}). Bitte erneut versuchen.`
+        );
+      }
+
+      if (!res.ok) throw new Error(data.error || `Verarbeitung fehlgeschlagen (Status ${res.status}).`);
+      const questions: ParsedQuestion[] | undefined = data.questions;
       if (!questions || questions.length === 0) {
         setError("Die KI konnte keine Fragen erkennen. Versuch es mit mehr Text oder einem anderen Dokument.");
         return;
@@ -119,7 +184,16 @@ export default function CustomSubjects({
       setWarnings([]);
       setStep("preview");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Etwas ist schiefgelaufen.");
+      const isNetworkError =
+        err instanceof TypeError ||
+        (err instanceof Error && /load failed|failed to fetch/i.test(err.message));
+      setError(
+        isNetworkError
+          ? "Die Anfrage konnte nicht gesendet werden. Bitte Internetverbindung prüfen und erneut versuchen."
+          : err instanceof Error
+          ? err.message
+          : "Etwas ist schiefgelaufen."
+      );
     } finally {
       setLoading(false);
     }
@@ -322,6 +396,10 @@ export default function CustomSubjects({
             <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
               Oder ein oder mehrere PDFs hochladen (optional)
             </label>
+            <p className="mb-2 text-xs text-slate-400">
+              Der Text wird direkt in deinem Browser aus dem PDF gelesen – die Datei selbst wird
+              nicht hochgeladen, dadurch funktionieren auch größere Skripte.
+            </p>
             <input
               ref={pdfInputRef}
               type="file"
@@ -329,14 +407,7 @@ export default function CustomSubjects({
               multiple
               onChange={(e) => {
                 const newFiles = Array.from(e.target.files || []);
-                setAiFiles((prev) =>
-                  [...prev, ...newFiles]
-                    .filter(
-                      (f, i, arr) =>
-                        arr.findIndex((f2) => f2.name === f.name && f2.size === f.size) === i
-                    )
-                    .slice(0, MAX_AI_FILES)
-                );
+                handlePdfFiles(newFiles);
                 e.target.value = "";
               }}
               className="hidden"
@@ -344,25 +415,39 @@ export default function CustomSubjects({
             <button
               type="button"
               onClick={() => pdfInputRef.current?.click()}
-              disabled={aiFiles.length >= MAX_AI_FILES}
+              disabled={pdfDocs.length >= MAX_AI_FILES || extracting !== null}
               className="btn-secondary w-full"
             >
-              <Upload className="h-4 w-4" />
-              {aiFiles.length === 0
+              {extracting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
+              {extracting
+                ? `Lese Text aus "${extracting}"…`
+                : pdfDocs.length === 0
                 ? "PDFs auswählen"
-                : `Weitere PDF hinzufügen (${aiFiles.length}/${MAX_AI_FILES})`}
+                : `Weitere PDF hinzufügen (${pdfDocs.length}/${MAX_AI_FILES})`}
             </button>
-            {aiFiles.length > 0 && (
+            {pdfDocs.length > 0 && (
               <ul className="mt-2 space-y-1">
-                {aiFiles.map((f, i) => (
+                {pdfDocs.map((d, i) => (
                   <li
-                    key={`${f.name}-${f.size}`}
+                    key={`${d.name}-${i}`}
                     className="flex items-center justify-between gap-2 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs dark:bg-slate-800"
                   >
-                    <span className="truncate">{f.name}</span>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <span className="truncate">
+                        {d.name}{" "}
+                        <span className="text-slate-400">
+                          ({d.pageCount} {d.pageCount === 1 ? "Seite" : "Seiten"})
+                        </span>
+                      </span>
+                    </span>
                     <button
                       type="button"
-                      onClick={() => setAiFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                      onClick={() => setPdfDocs((prev) => prev.filter((_, idx) => idx !== i))}
                       className="shrink-0 text-slate-400 hover:text-rose-500"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -370,6 +455,20 @@ export default function CustomSubjects({
                   </li>
                 ))}
               </ul>
+            )}
+            {scannedDocs.length > 0 && (
+              <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {scannedDocs.map((d) => d.name).join(", ")} enthält kaum erkennbaren Text – vermutlich
+                ein eingescanntes PDF ohne Textebene. Bitte Text stattdessen oben einfügen oder ein
+                Original-PDF verwenden.
+              </p>
+            )}
+            {textTooLong && (
+              <p className="mt-2 text-xs text-rose-500">
+                Zusammen {totalTextChars.toLocaleString("de-DE")} von max.{" "}
+                {MAX_TEXT_CHARS.toLocaleString("de-DE")} Zeichen – bitte ein Dokument entfernen.
+              </p>
             )}
           </div>
           {error && (
@@ -382,7 +481,11 @@ export default function CustomSubjects({
             <button onClick={resetFlow} className="btn-ghost text-xs">
               Abbrechen
             </button>
-            <button onClick={handleAiSubmit} disabled={loading} className="btn-primary">
+            <button
+              onClick={handleAiSubmit}
+              disabled={loading || textTooLong || extracting !== null}
+              className="btn-primary"
+            >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (

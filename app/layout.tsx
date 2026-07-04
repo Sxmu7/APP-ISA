@@ -5,9 +5,9 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "StudyFlow – Lern-App für Soziologie & Psychologie",
+  title: "StudyFlow – Deine Lern-App",
   description:
-    "Persönliche Lern-App mit Übungsmodus, Klausursimulation, Karteikarten und Klausurkalender.",
+    "Persönliche Lern-App für beliebige Fächer mit Übungsmodus, Klausursimulation, Karteikarten und Klausurkalender.",
   manifest: "/manifest.webmanifest",
   applicationName: "StudyFlow",
   appleWebApp: {
