@@ -84,17 +84,44 @@ export default function CalendarView({
     onProfileChange({ ...profile });
   }
 
-  function exportIcs() {
+  async function exportIcs() {
+    setImportMessage(null);
     const ics = generateIcs(profile);
-    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "studyflow-kalender.ics";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const blob = new Blob([ics], { type: "text/calendar" });
+    const file = new File([blob], "studyflow-kalender.ics", { type: "text/calendar" });
+
+    // Auf dem Handy (v.a. als installierte PWA über "Zum Home-Bildschirm")
+    // funktioniert der klassische <a download>-Trick oft nicht, weil es keine
+    // Browser-Oberfläche gibt, die den Download entgegennimmt. Dort nutzen wir
+    // stattdessen den nativen Teilen-Dialog, über den man die Datei direkt in
+    // Google Kalender/Apple Kalender importieren oder speichern kann.
+    const nav = navigator as Navigator & {
+      canShare?: (data: { files: File[] }) => boolean;
+      share?: (data: { files: File[]; title?: string }) => Promise<void>;
+    };
+    if (nav.canShare && nav.share && nav.canShare({ files: [file] })) {
+      try {
+        await nav.share({ files: [file], title: "StudyFlow Kalender" });
+        return;
+      } catch {
+        // Abgebrochen oder fehlgeschlagen -> normalen Download versuchen
+      }
+    }
+
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "studyflow-kalender.ics";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch {
+      setImportMessage(
+        "Download nicht möglich. Öffne StudyFlow im normalen Browser (nicht als installierte App) und versuche es erneut."
+      );
+    }
   }
 
   async function importIcsFile(file: File) {
@@ -243,7 +270,7 @@ export default function CalendarView({
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="z.B. Klausur Soziologie"
+              placeholder="z.B. Klausur Statistik I"
               className="input"
             />
             <div className="flex gap-2">
