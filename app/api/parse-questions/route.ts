@@ -121,12 +121,17 @@ export async function POST(req: NextRequest) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
           contents: [{ role: "user", parts }],
           generationConfig: {
             responseMimeType: "application/json",
             responseSchema: RESPONSE_SCHEMA,
-            maxOutputTokens: 8000,
+            maxOutputTokens: 16384,
+            // gemini-2.5-flash denkt standardmäßig intern nach und zieht diese
+            // "Denk-Tokens" vom maxOutputTokens-Budget ab – dadurch kam bei uns
+            // öfter eine leere Antwort zurück. Für die reine Extraktion/Erstellung
+            // von Quizfragen brauchen wir das Nachdenken nicht.
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
       }
@@ -153,8 +158,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (!Array.isArray(questions) || questions.length === 0) {
+      const finishReason = data?.candidates?.[0]?.finishReason;
+      const hint =
+        finishReason === "MAX_TOKENS"
+          ? " (Antwort wurde abgeschnitten – bitte mit weniger Text/Seiten pro Durchlauf erneut versuchen.)"
+          : "";
       return NextResponse.json(
-        { error: "Die KI konnte keine Fragen aus dem Dokument extrahieren." },
+        { error: `Die KI konnte keine Fragen aus dem Dokument extrahieren.${hint}` },
         { status: 422 }
       );
     }
